@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Prediction App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      background: linear-gradient(135deg, #161c32 0%, #35317b 100%);
+      min-height: 100vh;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+      box-sizing: border-box;
+    }
+    .card {
+      background: rgba(255,255,255,0.06);
+      border-radius: 18px;
+      box-shadow: 0 6px 20px rgba(44,33,98,0.2);
+      padding: 32px 22px 24px 22px;
+      max-width: 360px;
+      width: 96vw;
+      transition: background 0.4s;
+      border: 1px solid #5c478d44;
+      text-align: center;
+    }
+    .logo {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 18px;
+    }
+    .label {
+      margin: 10px 0 4px 0;
+      font-size: 17px;
+      letter-spacing: 0.2px;
+      transition: color 0.4s;
+      color: #f1f1f1;
+    }
+    #result {
+      font-size: 28px;
+      color: #fff62c;
+      margin-top: 18px;
+      letter-spacing: 0.5px;
+      font-weight: bold;
+      text-shadow: 0 3px 12px #ffe75770;
+      transition: color 0.5s, text-shadow 0.5s;
+    }
+    #number { color: #30e7bb; font-weight: 600 }
+    #confidence { color: #ffbc70; }
+    #level { color: #e78aea; }
+    #count { color: #a9e0ff; font-size: 15px; }
+
+    #predictBtn {
+      background: linear-gradient(90deg, #3ae374 20%, #38ebc7 80%);
+      color: #202020;
+      border: none;
+      box-shadow: 0 1px 6px #12f0a880;
+      border-radius: 8px;
+      font-size: 19px;
+      padding: 13px 0;
+      font-weight: bold;
+      margin: 20px 0 14px 0;
+      width: 100%;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      outline: none;
+      transition: background 0.2s, transform 0.12s;
+    }
+    #predictBtn:hover:enabled {
+      background: linear-gradient(95deg, #1aff81 10%, #31a2f2 120%);
+      color: #27153d;
+      transform: scale(1.04);
+    }
+    #predictBtn:active:enabled {
+      background: linear-gradient(95deg, #0de97a 10%, #36fd88 100%);
+      color: #353050;
+    }
+    #predictBtn:disabled {
+      background: #e3e1e9;
+      color: #777;
+      cursor: not-allowed;
+      opacity: 0.8;
+    }
+    #log {
+      max-height: 120px;
+      overflow-y: auto;
+      margin-top: 20px;
+      border-top: 1px solid #4e448080;
+      padding-top: 9px;
+      font-size: 14.5px;
+      color: #fff;
+      letter-spacing: 0.1px;
+    }
+    .logEntry {
+      background: rgba(0,0,0,0.09);
+      border-radius: 6px;
+      margin-bottom: 7px;
+      padding: 4px 7px;
+      font-family: 'Consolas', 'Menlo', 'monospace';
+    }
+    @media (max-width:420px) {
+      .card { padding: 12vw 4vw 6vw 4vw; max-width: 99vw; }
+      #result { font-size: 21px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="logo.png" alt="Logo" class="logo">
+    <div class="label" id="period">Period: 00000</div>
+    <div class="label" id="result">Result: Waiting...</div>
+    <div class="label" id="number">Number: --</div>
+    <div class="label" id="confidence">Confidence: --%</div>
+    <div class="label" id="level">Level: --</div>
+    <div class="label" id="count">Predictions: 0 / 10</div>
+
+    <button id="predictBtn" onclick="makePrediction()">Start Prediction</button>
+    <div id="log"></div>
+  </div>
+
+  <script>
+  const patternData = [
+    ["BIG", 8, 96], ["SMALL", 2, 90], ["BIG", 7, 98],
+    ["BIG", 1, 92], ["SMALL", 6, 88], ["BIG", 9, 99],
+    ["SMALL", 3, 89], ["BIG", 5, 95], ["BIG", 4, 94],
+    ["SMALL", 0, 87]
+  ];
+
+  let levelCounts = {"Level 1":0, "Level 2":0, "Level 3":0};
+  let lastMinute = -1;
+  let dailyPredictions = 0;
+  const maxPredictions = 10;
+  let predictionInterval = null;
+
+  function getCurrentPeriod() {
+    const now = new Date();
+    const minutesToday = now.getHours()*60 + now.getMinutes();
+    const dateStr = now.toISOString().slice(0,10).replace(/-/g,'');
+    const period = `${dateStr}1000${10001+minutesToday}`;
+    return [period, minutesToday];
+  }
+
+  function getTimeString() {
+    const now = new Date();
+    return now.toLocaleTimeString('en-GB'); // HH:MM:SS
+  }
+
+  function generatePrediction(minuteIndex) {
+    const index = minuteIndex % patternData.length;
+    const [result, number, baseConf] = patternData[index];
+    let level = "Level 3";
+    let confidence = 85;
+
+    if (baseConf >= 92 && levelCounts["Level 1"] < 5) {
+      level = "Level 1"; confidence = 93;
+    } else if (baseConf >= 89 && levelCounts["Level 2"] < 5) {
+      level = "Level 2"; confidence = 90;
+    } else if (levelCounts["Level 3"] < 5) {
+      level = "Level 3"; confidence = 87;
+    }
+
+    levelCounts[level]++;
+    return { result, number, confidence, level };
+  }
+
+  function beepSound() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(1024, ctx.currentTime);
+      osc.connect(ctx.destination);
+      osc.start();
+      setTimeout(() => { osc.stop(); ctx.close(); }, 180);
+    } catch {}
+  }
+
+  function flashResult(target, color) {
+    target.style.transition = 'none';
+    target.style.color = color;
+    target.style.textShadow = '0 0 18px ' + color;
+    setTimeout(() => {
+      target.style.transition = 'color 0.5s, text-shadow 0.5s';
+      target.style.color = "#fff62c";
+      target.style.textShadow = "0 3px 12px #ffe75770";
+    }, 260);
+  }
+
+  function makePrediction() {
+    if (dailyPredictions >= maxPredictions) return;
+
+    const [period, minuteIndex] = getCurrentPeriod();
+    if (minuteIndex === lastMinute) return;
+    lastMinute = minuteIndex;
+
+    const { result, number, confidence, level } = generatePrediction(minuteIndex);
+    const timeNow = getTimeString();
+
+    document.getElementById("period").innerText = `Period: ${period}`;
+    const resultEl = document.getElementById("result");
+    resultEl.innerText = `Result: ${result}`;
+
+    if (result === "BIG") {
+      flashResult(resultEl, "#33ff63");
+    } else {
+      flashResult(resultEl, "#ff857c");
+    }
+
+    document.getElementById("number").innerText = `Number: ${number}`;
+    document.getElementById("confidence").innerText = `Confidence: ${confidence}%`;
+    document.getElementById("level").innerText = `Level: ${level}`;
+    document.getElementById("count").innerText = `Predictions: ${dailyPredictions + 1} / ${maxPredictions}`;
+
+    const log = `${period} | ${timeNow} → ${result} (${number}) [${confidence}%] - ${level}`;
+    const entry = document.createElement('div');
+    entry.textContent = log;
+    entry.className = "logEntry";
+    document.getElementById("log").appendChild(entry);
+
+    beepSound();
+    dailyPredictions++;
+
+    if (dailyPredictions >= maxPredictions) {
+      resultEl.innerText = "Result: Limit Reached";
+      document.getElementById("predictBtn").disabled = true;
+      resultEl.style.color = "#bbbbdd";
+      resultEl.style.textShadow = "0 1px 9px #5c54a7";
+
+      stopAutoPrediction(); // stop when done
+    }
+  }
+
+  function startAutoPrediction() {
+    makePrediction(); // run once immediately
+    predictionInterval = setInterval(makePrediction, 60000); // every 60 seconds
+    const btn = document.getElementById("predictBtn");
+    btn.textContent = "Stop Prediction";
+    btn.onclick = stopAutoPrediction;
+  }
+
+  function stopAutoPrediction() {
+    clearInterval(predictionInterval);
+    predictionInterval = null;
+    const btn = document.getElementById("predictBtn");
+    btn.textContent = "Start Prediction";
+    btn.onclick = startAutoPrediction;
+  }
+
+  // Set initial button action
+  document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("predictBtn").onclick = startAutoPrediction;
+  });
+</script>
+</body>
+</html>
